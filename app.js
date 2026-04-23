@@ -3,8 +3,23 @@ const button = document.getElementById("showButton");
 const status = document.getElementById("statusText");
 const results = document.getElementById("results");
 const emptyText = document.getElementById("emptyText");
+const tabs = document.querySelectorAll(".tab");
 
-const API_URL = "/api/query";
+let activeMode = "generate"; // varsayılan: üret
+
+// Sekme değiştirme
+tabs.forEach(tab => {
+  tab.addEventListener("click", () => {
+    tabs.forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    activeMode = tab.dataset.tab;
+    input.placeholder = activeMode === "generate"
+      ? "Konu yaz... (aşk, yalnızlık, gece...)"
+      : "Yazar veya konu yaz... (Kafka, Nazım Hikmet...)";
+    clearResults();
+    input.focus();
+  });
+});
 
 function setStatus(msg) {
   status.textContent = msg;
@@ -55,30 +70,29 @@ async function handleQuery() {
 
   clearResults();
   button.disabled = true;
-  setStatus("Düşünüyor...");
+  setStatus(activeMode === "generate" ? "Üretiyor..." : "Alıntı aranıyor...");
 
   try {
-    const res = await fetch(API_URL, {
+    const res = await fetch("/api/query", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query })
+      body: JSON.stringify({ query, mode: activeMode })
     });
 
     const data = await res.json();
-    const { results: items = [], intent } = data;
+    const items = data?.results || [];
 
     setStatus("");
 
-    if (!items || items.length === 0) {
-      emptyText.textContent = "Sonuç bulunamadı.";
+    if (!items.length) {
+      emptyText.textContent = activeMode === "quote"
+        ? "Doğrulanmış alıntı bulunamadı."
+        : "Sonuç bulunamadı.";
       return;
     }
 
-    const isQuote = intent === "quote";
-
     items.forEach(item => {
-      const card = renderCard(item, isQuote);
-      results.appendChild(card);
+      results.appendChild(renderCard(item, activeMode === "quote"));
     });
 
   } catch {
@@ -90,6 +104,6 @@ async function handleQuery() {
 }
 
 button.addEventListener("click", handleQuery);
-input.addEventListener("keydown", (e) => {
+input.addEventListener("keydown", e => {
   if (e.key === "Enter") handleQuery();
 });

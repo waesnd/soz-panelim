@@ -53,8 +53,33 @@ input {
   font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Garamond, Georgia, serif;
 }
 
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.tab {
+  flex: 1;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
 .search-box {
-  margin-top: 28px;
+  margin-top: 12px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);

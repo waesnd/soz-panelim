@@ -11,14 +11,18 @@
     <section class="shell">
       <h1 class="title">Kişisel Söz Paneli</h1>
 
+      <div class="tabs">
+        <button class="tab active" data-tab="generate">Üret</button>
+        <button class="tab" data-tab="quote">Alıntı</button>
+      </div>
+
       <div class="search-box">
         <input
           id="queryInput"
           class="query-input"
           type="text"
-          placeholder="Ne istiyorsan yaz..."
+          placeholder="Konu yaz..."
         />
-
         <div class="action-row">
           <p id="statusText" class="status-text"></p>
           <button id="showButton" class="show-button">Göster</button>
