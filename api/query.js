@@ -2,6 +2,45 @@ const Groq = require("groq-sdk");
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
+// Tavily ile TEK sorguda tüm alıntıları toplu doğrula — 1 kredi
+async function verifyBatch(query, results) {
+  const apiKey = process.env.TAVILY_API_KEY;
+  if (!apiKey) return results; // Tavily yoksa hepsini döndür
+
+  try {
+    const res = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        query: `${query} alıntı söz yazar`,
+        search_depth: "basic",
+        max_results: 5,
+        include_answer: false
+      })
+    });
+
+    if (!res.ok) return results;
+    const data = await res.json();
+    const webText = (data?.results || [])
+      .map(r => `${r.title} ${r.content}`)
+      .join(" ")
+      .toLowerCase();
+
+    // Web metninde yazarın soyadı geçiyorsa onayla
+    return results.filter(item => {
+      if (!item.author) return false;
+      const lastName = item.author.split(" ").pop().toLowerCase();
+      return webText.includes(lastName);
+    });
+
+  } catch {
+    return results; // hata varsa hepsini döndür
+  }
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -21,16 +60,16 @@ module.exports = async function handler(req, res) {
     let systemPrompt, userPrompt;
 
     if (intent === "quote") {
-      systemPrompt = `Sen kapsamlı bir edebiyat ve felsefe arşivisin. Görevin verilen konu veya yazar için gerçek, doğrulanmış alıntılar bulmaktır.
+      systemPrompt = `Sen kapsamlı bir edebiyat ve felsefe arşivisin. Görevin verilen konu veya yazar için gerçek, kesin bilinen alıntılar bulmaktır.
 
 ZORUNLU KURALLAR:
 - Yalnızca gerçekten söylenmiş veya yazılmış alıntılar ver
-- Uydurma, tahmin etme, benzer bir şey yaz — YASAK
-- Her alıntıda "author" alanı ZORUNLU — tam ad yaz (örn: "Friedrich Nietzsche", "Nazım Hikmet Ran")
+- Uydurma, tahmin etme — KESİNLİKLE YASAK
+- Her alıntıda "author" alanı ZORUNLU — tam ad yaz
 - Mümkünse "work" alanına eser adını yaz
 - Alıntı Türkçe değilse Türkçe çevirisini "text" alanına yaz
-- Emin olmadığın alıntıyı döndürme — boş array tercih et
-- Kesinlikle bilinen 10 alıntı bul; 10 bulamazsan bulduğun kadarını ver
+- Emin olmadığın alıntıyı döndürme
+- 10 alıntı bul; 10 bulamazsan bulduğun kadarını ver
 
 YALNIZCA şu JSON formatında yanıt ver, başka hiçbir şey yazma:
 {"results": [{"text": "Türkçe alıntı metni", "author": "Tam Yazar Adı", "work": "Eser Adı veya boş string"}]}
@@ -75,10 +114,14 @@ YALNIZCA şu JSON formatında yanıt ver, başka hiçbir şey yazma:
       return res.status(200).json({ results: [], intent });
     }
 
-    return res.status(200).json({
-      results: parsed.results || [],
-      intent
-    });
+    let results = parsed.results || [];
+
+    // Alıntı modunda: 1 Tavily kredisiyle toplu doğrula
+    if (intent === "quote" && results.length > 0) {
+      results = await verifyBatch(query, results);
+    }
+
+    return res.status(200).json({ results, intent });
 
   } catch (err) {
     console.error(err);
