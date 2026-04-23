@@ -14,9 +14,9 @@ async function searchWithTavily(query) {
         "Authorization": `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        query: `${query} alıntı söz`,
+        query: `${query} alıntı söz quote`,
         search_depth: "basic",
-        max_results: 5,
+        max_results: 6,
         include_answer: false
       })
     });
@@ -24,7 +24,7 @@ async function searchWithTavily(query) {
     if (!res.ok) return null;
     const data = await res.json();
     const results = data?.results || [];
-    return results.map(r => `${r.title}: ${r.content}`).join("\n").slice(0, 2500);
+    return results.map(r => `${r.title}: ${r.content}`).join("\n").slice(0, 3000);
   } catch {
     return null;
   }
@@ -51,24 +51,25 @@ module.exports = async function handler(req, res) {
     if (intent === "quote") {
       const searchContext = await searchWithTavily(query);
 
-      systemPrompt = `Sen bir alıntı doğrulama uzmanısın. Görevin yalnızca gerçek ve doğrulanmış alıntılar sunmaktır.
+      systemPrompt = `Sen bir alıntı doğrulama uzmanısın. Görevin yalnızca gerçek, kaynaklı ve doğrulanmış alıntılar sunmaktır.
 
-KURALLAR:
-- Yalnızca gerçekten söylenmiş, doğrulanabilir alıntılar ver
-- Emin olmadığın hiçbir alıntıyı uydurma
-- Her alıntıda yazar adı zorunlu; eser adı varsa ekle
-- Şüpheli veya belirsiz alıntıyı gösterme
-- Türkçe yaz; orijinal dilde söylenmişse Türkçe çevirisini ver
+ZORUNLU KURALLAR:
+- Yalnızca gerçekten söylenmiş veya yazılmış alıntılar ver
+- Her alıntıda "author" alanı ZORUNLU — tam ad yaz (örn: "Friedrich Nietzsche", "Nazım Hikmet Ran", "Franz Kafka")
+- Mümkünse "work" alanına eser adını yaz (kitap, şiir, konuşma vb.)
+- Emin olmadığın alıntıyı ASLA uydurma veya tahmin etme
+- Alıntı Türkçe değilse Türkçe çevirisini "text" alanına yaz, orijinalini "original" alanına ekle
+- Doğrulanamayan veya şüpheli alıntıları döndürme
 - Güvenilir alıntı bulamazsan boş array döndür
 
 YALNIZCA şu JSON formatında yanıt ver, başka hiçbir şey yazma:
-{"results": [{"text": "alıntı metni", "source": "Yazar — Eser"}]}
+{"results": [{"text": "Türkçe alıntı metni", "author": "Tam Yazar Adı", "work": "Eser Adı veya boş string", "original": "orijinal dildeki metin veya boş string"}]}
 
 Bulunamazsa: {"results": []}`;
 
       userPrompt = searchContext
-        ? `"${query}" için gerçek alıntılar bul.\n\nWeb'den toplanan bağlam:\n${searchContext}`
-        : `"${query}" için gerçek alıntılar bul. Emin olmadığın hiçbir şey uydurma.`;
+        ? `"${query}" için gerçek ve kaynaklı alıntılar bul.\n\nWeb'den toplanan bağlam:\n${searchContext}`
+        : `"${query}" için gerçek ve kaynaklı alıntılar bul. Emin olmadığın hiçbir şey uydurma.`;
 
     } else {
       systemPrompt = `Sen özgün, güçlü Türkçe sözler yazan bir yazarsın.
@@ -93,7 +94,7 @@ YALNIZCA şu JSON formatında yanıt ver, başka hiçbir şey yazma:
         { role: "user", content: userPrompt }
       ],
       temperature: intent === "quote" ? 0.1 : 0.82,
-      max_tokens: 1024
+      max_tokens: 1500
     });
 
     const raw = completion.choices[0]?.message?.content || "";
