@@ -2,10 +2,10 @@ const Groq = require("groq-sdk");
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// Tavily ile TEK sorguda tüm alıntıları toplu doğrula — 1 kredi
-async function verifyBatch(query, results) {
+// Tavily ile konu hakkında web bağlamı topla — 1 kredi
+async function fetchContext(query) {
   const apiKey = process.env.TAVILY_API_KEY;
-  if (!apiKey) return results; // Tavily yoksa hepsini döndür
+  if (!apiKey) return null;
 
   try {
     const res = await fetch("https://api.tavily.com/search", {
@@ -22,22 +22,14 @@ async function verifyBatch(query, results) {
       })
     });
 
-    if (!res.ok) return results;
+    if (!res.ok) return null;
     const data = await res.json();
-    const webText = (data?.results || [])
-      .map(r => `${r.title} ${r.content}`)
-      .join(" ")
-      .toLowerCase();
-
-    // Web metninde yazarın soyadı geçiyorsa onayla
-    return results.filter(item => {
-      if (!item.author) return false;
-      const lastName = item.author.split(" ").pop().toLowerCase();
-      return webText.includes(lastName);
-    });
-
+    return (data?.results || [])
+      .map(r => `${r.title}: ${r.content}`)
+      .join("\n")
+      .slice(0, 2500);
   } catch {
-    return results; // hata varsa hepsini döndür
+    return null;
   }
 }
 
@@ -60,23 +52,28 @@ module.exports = async function handler(req, res) {
     let systemPrompt, userPrompt;
 
     if (intent === "quote") {
-      systemPrompt = `Sen kapsamlı bir edebiyat ve felsefe arşivisin. Görevin verilen konu veya yazar için gerçek, kesin bilinen alıntılar bulmaktır.
+      // 1 Tavily kredisi ile bağlam topla
+      const context = await fetchContext(query);
+
+      systemPrompt = `Sen kapsamlı bir edebiyat ve felsefe arşivisin. Sana web'den toplanan bağlam verilecek. Bu bağlamı kullanarak gerçek, doğrulanmış alıntılar bul.
 
 ZORUNLU KURALLAR:
-- Yalnızca gerçekten söylenmiş veya yazılmış alıntılar ver
-- Uydurma, tahmin etme — KESİNLİKLE YASAK
+- Öncelikle verilen web bağlamındaki alıntıları kullan
+- Bağlamda yeterli alıntı yoksa kendi bilginle tamamla — ama yalnızca kesin bildiğin alıntıları
+- Uydurma veya tahmin etme — KESİNLİKLE YASAK
 - Her alıntıda "author" alanı ZORUNLU — tam ad yaz
 - Mümkünse "work" alanına eser adını yaz
 - Alıntı Türkçe değilse Türkçe çevirisini "text" alanına yaz
-- Emin olmadığın alıntıyı döndürme
-- 10 alıntı bul; 10 bulamazsan bulduğun kadarını ver
+- 10 alıntı ver; bulamazsan bulduğun kadarını ver
 
 YALNIZCA şu JSON formatında yanıt ver, başka hiçbir şey yazma:
 {"results": [{"text": "Türkçe alıntı metni", "author": "Tam Yazar Adı", "work": "Eser Adı veya boş string"}]}
 
 Bulunamazsa: {"results": []}`;
 
-      userPrompt = `"${query}" için gerçek ve kesin bilinen alıntılar bul.`;
+      userPrompt = context
+        ? `"${query}" için gerçek alıntılar bul.\n\nWeb bağlamı:\n${context}`
+        : `"${query}" için gerçek ve kesin bilinen alıntılar bul.`;
 
     } else {
       systemPrompt = `Sen özgün, güçlü Türkçe sözler yazan bir yazarsın.
@@ -84,7 +81,7 @@ Bulunamazsa: {"results": []}`;
 ZORUNLU KURALLAR:
 - Özgün ve derin sözler yaz, klişelerden kesinlikle kaçın
 - Her söz kısa ve güçlü olsun (1-3 cümle)
-- Sahte yazar atfı YAPMA — "author" alanı olmamalı
+- Sahte yazar atfı YAPMA
 - Motivasyon posteri, ucuz veya yapay görünmesin
 - Birbirinden farklı 10 söz üret
 
@@ -114,14 +111,10 @@ YALNIZCA şu JSON formatında yanıt ver, başka hiçbir şey yazma:
       return res.status(200).json({ results: [], intent });
     }
 
-    let results = parsed.results || [];
-
-    // Alıntı modunda: 1 Tavily kredisiyle toplu doğrula
-    if (intent === "quote" && results.length > 0) {
-      results = await verifyBatch(query, results);
-    }
-
-    return res.status(200).json({ results, intent });
+    return res.status(200).json({
+      results: parsed.results || [],
+      intent
+    });
 
   } catch (err) {
     console.error(err);
