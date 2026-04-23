@@ -2,9 +2,10 @@ const Groq = require("groq-sdk");
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-async function searchWithTavily(query) {
+// Tavily ile tek bir alıntıyı doğrula
+async function verifyWithTavily(text, author) {
   const apiKey = process.env.TAVILY_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) return true; // Tavily yoksa geç, göster
 
   try {
     const res = await fetch("https://api.tavily.com/search", {
@@ -14,19 +15,25 @@ async function searchWithTavily(query) {
         "Authorization": `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        query: `${query} alıntı söz quote`,
+        query: `"${author}" "${text.slice(0, 60)}"`,
         search_depth: "basic",
-        max_results: 6,
+        max_results: 3,
         include_answer: false
       })
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) return true; // hata varsa geç, göster
     const data = await res.json();
     const results = data?.results || [];
-    return results.map(r => `${r.title}: ${r.content}`).join("\n").slice(0, 3000);
+
+    if (results.length === 0) return false;
+
+    // Sonuçlarda yazar adı geçiyor mu?
+    const authorLower = author.toLowerCase();
+    const combined = results.map(r => (r.title + " " + r.content).toLowerCase()).join(" ");
+    return combined.includes(authorLower.split(" ")[0]); // soyadı yeterli
   } catch {
-    return null;
+    return true; // hata varsa geç, göster
   }
 }
 
@@ -49,27 +56,19 @@ module.exports = async function handler(req, res) {
     let systemPrompt, userPrompt;
 
     if (intent === "quote") {
-      const searchContext = await searchWithTavily(query);
+      systemPrompt = `Sen kapsamlı bir edebiyat ve felsefe arşivisin. Görevin verilen konu veya yazar için gerçek, bilinen alıntılar bulmaktır.
 
-      systemPrompt = `Sen bir alıntı doğrulama uzmanısın. Görevin yalnızca gerçek, kaynaklı ve doğrulanmış alıntılar sunmaktır.
-
-ZORUNLU KURALLAR:
-- Yalnızca gerçekten söylenmiş veya yazılmış alıntılar ver
-- Her alıntıda "author" alanı ZORUNLU — tam ad yaz (örn: "Friedrich Nietzsche", "Nazım Hikmet Ran", "Franz Kafka")
-- Mümkünse "work" alanına eser adını yaz (kitap, şiir, konuşma vb.)
-- Emin olmadığın alıntıyı ASLA uydurma veya tahmin etme
-- Alıntı Türkçe değilse Türkçe çevirisini "text" alanına yaz, orijinalini "original" alanına ekle
-- Doğrulanamayan veya şüpheli alıntıları döndürme
-- Güvenilir alıntı bulamazsan boş array döndür
+KURALLAR:
+- Gerçekten söylenmiş veya yazılmış alıntılar ver
+- Her alıntıda "author" alanı ZORUNLU — tam ad yaz
+- Mümkünse "work" alanına eser adını yaz
+- Alıntı Türkçe değilse Türkçe çevirisini "text" alanına yaz
+- 10 alıntı bul
 
 YALNIZCA şu JSON formatında yanıt ver, başka hiçbir şey yazma:
-{"results": [{"text": "Türkçe alıntı metni", "author": "Tam Yazar Adı", "work": "Eser Adı veya boş string", "original": "orijinal dildeki metin veya boş string"}]}
+{"results": [{"text": "Türkçe alıntı metni", "author": "Tam Yazar Adı", "work": "Eser Adı veya boş string"}]}`;
 
-Bulunamazsa: {"results": []}`;
-
-      userPrompt = searchContext
-        ? `"${query}" için gerçek ve kaynaklı alıntılar bul.\n\nWeb'den toplanan bağlam:\n${searchContext}`
-        : `"${query}" için gerçek ve kaynaklı alıntılar bul. Emin olmadığın hiçbir şey uydurma.`;
+      userPrompt = `"${query}" için gerçek ve bilinen alıntılar bul.`;
 
     } else {
       systemPrompt = `Sen özgün, güçlü Türkçe sözler yazan bir yazarsın.
@@ -77,9 +76,9 @@ Bulunamazsa: {"results": []}`;
 KURALLAR:
 - Özgün ve derin sözler yaz, klişelerden kaçın
 - Her söz kısa ve güçlü olsun (1-3 cümle)
-- Sahte yazar atfı yapma, tire ile isim ekleme
+- Sahte yazar atfı YAPMA, tire ile isim EKLEME
 - Ucuz, yapay veya motivasyon posteri gibi görünmesin
-- 5 farklı söz üret
+- 10 farklı söz üret
 
 YALNIZCA şu JSON formatında yanıt ver, başka hiçbir şey yazma:
 {"results": [{"text": "söz metni"}]}`;
@@ -93,8 +92,8 @@ YALNIZCA şu JSON formatında yanıt ver, başka hiçbir şey yazma:
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
       ],
-      temperature: intent === "quote" ? 0.1 : 0.82,
-      max_tokens: 1500
+      temperature: intent === "quote" ? 0.2 : 0.82,
+      max_tokens: 2500
     });
 
     const raw = completion.choices[0]?.message?.content || "";
@@ -107,10 +106,21 @@ YALNIZCA şu JSON formatında yanıt ver, başka hiçbir şey yazma:
       return res.status(200).json({ results: [], intent });
     }
 
-    return res.status(200).json({
-      results: parsed.results || [],
-      intent
-    });
+    let results = parsed.results || [];
+
+    // Alıntı modunda Tavily ile doğrula
+    if (intent === "quote" && results.length > 0) {
+      const verified = await Promise.all(
+        results.map(async (item) => {
+          if (!item.author) return null;
+          const ok = await verifyWithTavily(item.text, item.author);
+          return ok ? item : null;
+        })
+      );
+      results = verified.filter(Boolean);
+    }
+
+    return res.status(200).json({ results, intent });
 
   } catch (err) {
     console.error(err);
