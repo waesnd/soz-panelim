@@ -41,11 +41,15 @@ function renderCard(item, isQuote) {
   const card = document.createElement("div");
   card.className = "result-card";
 
+  const fullText = isQuote && item.source
+    ? `${item.text}\n— ${item.source}`
+    : item.text;
+
   const copyBtn = document.createElement("button");
   copyBtn.className = "copy-button";
   copyBtn.textContent = "⎘";
   copyBtn.title = "Kopyala";
-  copyBtn.addEventListener("click", () => copyText(item.text, copyBtn));
+  copyBtn.addEventListener("click", () => copyText(fullText, copyBtn));
 
   const text = document.createElement("p");
   text.className = "result-text";
