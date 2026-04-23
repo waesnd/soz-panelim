@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kişisel Söz Paneli</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="page">
+    <section class="shell">
+      <h1 class="title">Kişisel Söz Paneli</h1>
+
+      <div class="search-box">
+        <input
+          id="queryInput"
+          class="query-input"
+          type="text"
+          placeholder="Ne istiyorsan yaz..."
+        />
+
+        <div class="action-row">
+          <p id="statusText" class="status-text"></p>
+          <button id="showButton" class="show-button">Göster</button>
+        </div>
+      </div>
+
+      <section id="results" class="results"></section>
+      <p id="emptyText" class="empty-text"></p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
