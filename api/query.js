@@ -2,39 +2,6 @@ const Groq = require("groq-sdk");
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// Niyet analizi
-function detectIntent(query) {
-  const q = query.toLowerCase().trim();
-
-  const quoteKeywords = [
-    "alıntı", "sözü", "sözleri", "şair", "yazar", "düşünür", "filozof",
-    "kitap alıntısı", "kitabından", "quote", "dedi ki", "diyor ki"
-  ];
-
-  const knownNames = [
-    "nietzsche", "dostoyevski", "kafka", "camus", "sartre", "tolstoy",
-    "shakespeare", "einstein", "freud", "platon", "sokrates", "aristoteles",
-    "cemal süreya", "nazım hikmet", "orhan veli", "can yücel", "attila ilhan",
-    "ahmet hamdi tanpınar", "oğuz atay", "sabahattin ali", "yaşar kemal",
-    "mehmet akif", "tevfik fikret", "peyami safa", "tarık buğra",
-    "paulo coelho", "rumi", "mevlana", "yunus emre", "hacı bektaş veli",
-    "borges", "woolf", "proust", "hemingway", "bukowski", "neruda",
-    "tagore", "gibran", "wilde", "twain", "buddha", "konfüçyüs", "lao tzu",
-    "hugo", "balzac", "flaubert", "zola", "baudelaire", "rimbaud",
-    "çehov", "turgenyev", "gogol", "puşkin",
-    "orhan pamuk", "elif şafak", "ahmet altan", "zülfü livaneli"
-  ];
-
-  for (const name of knownNames) {
-    if (q.includes(name)) return "quote";
-  }
-  for (const kw of quoteKeywords) {
-    if (q.includes(kw)) return "quote";
-  }
-  return "generate";
-}
-
-// Tavily ile web araması
 async function searchWithTavily(query) {
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) return null;
@@ -57,11 +24,7 @@ async function searchWithTavily(query) {
     if (!res.ok) return null;
     const data = await res.json();
     const results = data?.results || [];
-
-    return results
-      .map(r => `${r.title}: ${r.content}`)
-      .join("\n")
-      .slice(0, 2500);
+    return results.map(r => `${r.title}: ${r.content}`).join("\n").slice(0, 2500);
   } catch {
     return null;
   }
@@ -75,12 +38,12 @@ module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const { query } = req.body || {};
+  const { query, mode } = req.body || {};
   if (!query || !query.trim()) {
     return res.status(400).json({ error: "Sorgu boş olamaz" });
   }
 
-  const intent = detectIntent(query.trim());
+  const intent = mode === "quote" ? "quote" : "generate";
 
   try {
     let systemPrompt, userPrompt;
@@ -92,9 +55,9 @@ module.exports = async function handler(req, res) {
 
 KURALLAR:
 - Yalnızca gerçekten söylenmiş, doğrulanabilir alıntılar ver
-- Emin olmadığın hiçbir alıntıyı uydurma veya tahmin etme
+- Emin olmadığın hiçbir alıntıyı uydurma
 - Her alıntıda yazar adı zorunlu; eser adı varsa ekle
-- Şüpheli veya belirsiz alıntıyı kesinlikle gösterme
+- Şüpheli veya belirsiz alıntıyı gösterme
 - Türkçe yaz; orijinal dilde söylenmişse Türkçe çevirisini ver
 - Güvenilir alıntı bulamazsan boş array döndür
 
