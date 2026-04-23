@@ -29,9 +29,26 @@ function clearResults() {
   emptyText.textContent = "";
 }
 
+function showToast(msg) {
+  const existing = document.querySelector(".toast");
+  if (existing) existing.remove();
+
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+
+  setTimeout(() => toast.classList.add("toast-visible"), 10);
+  setTimeout(() => {
+    toast.classList.remove("toast-visible");
+    setTimeout(() => toast.remove(), 300);
+  }, 1800);
+}
+
 function copyText(text, btn) {
   navigator.clipboard.writeText(text).then(() => {
     btn.textContent = "✓";
+    showToast("Kopyalandı");
     setTimeout(() => { btn.textContent = "⎘"; }, 1500);
   });
 }
@@ -40,7 +57,6 @@ function renderCard(item, isQuote) {
   const card = document.createElement("div");
   card.className = "result-card";
 
-  // Kopyalanacak tam metin
   let copyContent = item.text;
   if (isQuote) {
     if (item.author) copyContent += `\n— ${item.author}`;
