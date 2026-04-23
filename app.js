@@ -5,9 +5,8 @@ const results = document.getElementById("results");
 const emptyText = document.getElementById("emptyText");
 const tabs = document.querySelectorAll(".tab");
 
-let activeMode = "generate"; // varsayılan: üret
+let activeMode = "generate";
 
-// Sekme değiştirme
 tabs.forEach(tab => {
   tab.addEventListener("click", () => {
     tabs.forEach(t => t.classList.remove("active"));
@@ -41,15 +40,18 @@ function renderCard(item, isQuote) {
   const card = document.createElement("div");
   card.className = "result-card";
 
-  const fullText = isQuote && item.source
-    ? `${item.text}\n— ${item.source}`
-    : item.text;
+  // Kopyalanacak tam metin
+  let copyContent = item.text;
+  if (isQuote) {
+    if (item.author) copyContent += `\n— ${item.author}`;
+    if (item.work) copyContent += `, ${item.work}`;
+  }
 
   const copyBtn = document.createElement("button");
   copyBtn.className = "copy-button";
   copyBtn.textContent = "⎘";
   copyBtn.title = "Kopyala";
-  copyBtn.addEventListener("click", () => copyText(fullText, copyBtn));
+  copyBtn.addEventListener("click", () => copyText(copyContent, copyBtn));
 
   const text = document.createElement("p");
   text.className = "result-text";
@@ -58,10 +60,12 @@ function renderCard(item, isQuote) {
   card.appendChild(copyBtn);
   card.appendChild(text);
 
-  if (isQuote && item.source) {
+  if (isQuote && item.author) {
     const source = document.createElement("p");
     source.className = "result-source";
-    source.textContent = "— " + item.source;
+    source.textContent = item.work
+      ? `— ${item.author} · ${item.work}`
+      : `— ${item.author}`;
     card.appendChild(source);
   }
 
