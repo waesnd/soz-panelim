@@ -2,8 +2,8 @@ const Groq = require("groq-sdk");
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// Tavily ile konu hakkında web bağlamı topla — 1 kredi
-async function fetchContext(query) {
+// Tavily ile web'den gerçek alıntıları topla — 1 kredi
+async function fetchQuotes(query) {
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) return null;
 
@@ -16,8 +16,8 @@ async function fetchContext(query) {
       },
       body: JSON.stringify({
         query: `${query} alıntı söz yazar`,
-        search_depth: "basic",
-        max_results: 5,
+        search_depth: "advanced",
+        max_results: 7,
         include_answer: false
       })
     });
@@ -25,9 +25,9 @@ async function fetchContext(query) {
     if (!res.ok) return null;
     const data = await res.json();
     return (data?.results || [])
-      .map(r => `${r.title}: ${r.content}`)
-      .join("\n")
-      .slice(0, 2500);
+      .map(r => `Kaynak: ${r.title}\n${r.content}`)
+      .join("\n\n")
+      .slice(0, 3500);
   } catch {
     return null;
   }
@@ -52,28 +52,28 @@ module.exports = async function handler(req, res) {
     let systemPrompt, userPrompt;
 
     if (intent === "quote") {
-      // 1 Tavily kredisi ile bağlam topla
-      const context = await fetchContext(query);
+      const webContent = await fetchQuotes(query);
 
-      systemPrompt = `Sen kapsamlı bir edebiyat ve felsefe arşivisin. Sana web'den toplanan bağlam verilecek. Bu bağlamı kullanarak gerçek, doğrulanmış alıntılar bul.
+      systemPrompt = `Sen bir alıntı editörüsün. Sana web'den toplanan gerçek içerik verilecek. Görevin YALNIZCA bu içerikten alıntı çıkarmaktır.
 
 ZORUNLU KURALLAR:
-- Öncelikle verilen web bağlamındaki alıntıları kullan
-- Bağlamda yeterli alıntı yoksa kendi bilginle tamamla — ama yalnızca kesin bildiğin alıntıları
-- Uydurma veya tahmin etme — KESİNLİKLE YASAK
-- Her alıntıda "author" alanı ZORUNLU — tam ad yaz
+- SADECE verilen web içeriğindeki alıntıları kullan
+- Web içeriğinde olmayan hiçbir alıntı ekleme — KESİNLİKLE YASAK
+- Kendi bilginden alıntı uydurma — KESİNLİKLE YASAK
+- Her alıntıda "author" alanı ZORUNLU
 - Mümkünse "work" alanına eser adını yaz
-- Alıntı Türkçe değilse Türkçe çevirisini "text" alanına yaz
-- 10 alıntı ver; bulamazsan bulduğun kadarını ver
+- Alıntı Türkçe değilse Türkçeye çevir, "text" alanına yaz
+- Web içeriğinde kaç alıntı varsa o kadar ver, fazlasını ekleme
+- Web içeriğinde hiç alıntı yoksa boş array döndür
 
 YALNIZCA şu JSON formatında yanıt ver, başka hiçbir şey yazma:
 {"results": [{"text": "Türkçe alıntı metni", "author": "Tam Yazar Adı", "work": "Eser Adı veya boş string"}]}
 
 Bulunamazsa: {"results": []}`;
 
-      userPrompt = context
-        ? `"${query}" için gerçek alıntılar bul.\n\nWeb bağlamı:\n${context}`
-        : `"${query}" için gerçek ve kesin bilinen alıntılar bul.`;
+      userPrompt = webContent
+        ? `"${query}" için aşağıdaki web içeriğinden alıntıları çıkar:\n\n${webContent}`
+        : `"${query}" için web içeriği bulunamadı.`;
 
     } else {
       systemPrompt = `Sen özgün, güçlü Türkçe sözler yazan bir yazarsın.
@@ -97,7 +97,7 @@ YALNIZCA şu JSON formatında yanıt ver, başka hiçbir şey yazma:
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
       ],
-      temperature: intent === "quote" ? 0.15 : 0.85,
+      temperature: intent === "quote" ? 0.05 : 0.85,
       max_tokens: 2500
     });
 
